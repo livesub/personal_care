@@ -1,0 +1,139 @@
+# [Personal Care] 프로젝트 통합 개발 원칙 (.cursorrules)
+
+## 0. 프로젝트 개요 및 환경 (Overview & Environment)
+- **프로젝트 명:** Personal Care (장애인 활동 보호사 관리 시스템)
+- **핵심 목표:** 장애인 활동 지원 서비스를 위한 통합 관리 플랫폼 구축.
+- **[필수] 개발 환경 및 버전 (Strict Versioning):**
+  - **Framework:** **Laravel 12** (Backend API), **Flutter 3.38.9** (Frontend App/Web)
+  - **Runtime:** **PHP 8.5.1**
+  - **Server:** **Nginx 1.29.5**
+  - **Database:** **MySQL 8.4.8** (InnoDB 엔진 필수)
+- **플랫폼 전략 (One Codebase, Multi-Platform):**
+  - **Frontend:** Flutter 단일 코드베이스로 Web(Admin), Android(User), iOS(User) 3가지 플랫폼을 모두 빌드한다.
+  - **Backend:** Laravel은 View(Blade)를 반환하지 않고 오직 **JSON 데이터**만 반환하는 API 서버로 동작한다.
+- **화면 대응 전략 (Responsive Layout):**
+  - 단순히 모바일 화면을 늘리는 것을 금지한다.
+  - `LayoutBuilder`를 사용하여 화면 너비가 600px 이상일 경우(Web/Tablet) **'고정 사이드바(Left) + 콘텐츠(Right)'** 구조로, 미만일 경우(Mobile) **'Drawer(햄버거 메뉴) + 리스트'** 구조로 자동 분기한다.
+
+## 1. 기술 스택 및 라이브러리 표준 (Tech Stack Standards)
+### Backend (Laravel 12 + PHP 8.5.1)
+- **인증 (Auth):** `Laravel Sanctum` (API Token 기반). Web과 App 모두 토큰 인증을 사용한다.
+- **API 응답:** 모든 응답은 `JsonResource` 클래스를 통해 통일된 규격(`code`, `message`, `data`)으로 반환한다.
+- **유효성 검사:** Controller 내 검증 로직 작성을 금지한다. 반드시 `FormRequest` 클래스를 생성하여 분리한다.
+
+### Frontend (Flutter 3.38.9)
+- **상태 관리:** **Riverpod** (Code Generation 방식 권장). GetX, Provider 등 타 라이브러리 사용 금지.
+- **라우팅:** **GoRouter** 사용. Web URL과 App Deep Link를 통합 관리한다.
+- **디자인 시스템:** Material 3 (M3) 디자인 가이드를 준수한다.
+
+## 2. 데이터베이스 설계 및 코딩 규칙 (MySQL 8.4.8)
+- **[필수] 친절한 한글 주석 (Korean Comments):**
+  - Migration 파일 작성 시 `$table->comment('설명')`을 사용하여 테이블과 컬럼에 상세한 한글 설명을 반드시 포함한다.
+  - 코드 내 복잡한 로직, 함수, 변수 정의 시 초보자도 이해할 수 있는 한글 주석을 단다.
+- **테이블 구조 및 명명 규칙:**
+  - 테이블명과 컬럼명은 `snake_case`를 사용한다.
+  - **Soft Delete:** `users`, `clients`, `matchings` 등 핵심 데이터는 `deleted_at`을 사용하여 논리적 삭제만 허용한다.
+  - **N:M 구조:** 보호사(`users`)와 센터(`centers`)는 N:M 관계이므로 반드시 `center_user_affiliation` 중간 테이블을 통해 관리한다.
+- **대용량 처리 최적화:**
+  - `user_id`, `date`, `center_id` 등 조회 빈도가 높은 컬럼은 복합 인덱스(Index)를 설정한다.
+  - 대량 데이터 처리 시 `chunk()` 메서드를 사용하고, N+1 문제 방지를 위해 `with()` 로딩을 필수 적용한다.
+
+## 3. 인증 및 보안 규칙 (Auth & Security) - [매우 중요]
+- **로그인 유효성 검사 분리 (Validation Logic):**
+  - **관리자 (Admin/Web):** 아이디는 일반 문자열이다. **절대 휴대폰 번호 정규식(Regex)을 적용하지 마라.** (`isNotEmpty`만 체크)
+  - **보호사 (User/App):** 아이디는 휴대폰 번호이다. `010-xxxx-xxxx` 정규식 검사를 필수로 적용한다.
+- **비밀번호 및 암호화:**
+  - 비밀번호 저장: **Argon2id** 해싱 알고리즘 사용.
+  - 민감 정보(주민번호 뒷자리, 바우처 번호):
+    - 저장 시: **AES-256-CBC** 양방향 암호화 (`_hidden` 컬럼).
+    - 검색 시: **SHA-256** 단방향 해시 (`_hash` 컬럼)를 사용하여 일치 여부 확인.
+- **계정 잠금 정책:**
+  - 앱 로그인 실패 시 `identity_cancel_count`를 증가시킨다.
+  - 임계치 초과 시 `status`를 `suspended`로 변경하고 로그인을 차단한다.
+  - 잠금 해제는 오직 관리자만 가능하며, 해제 시 카운트를 0으로 초기화한다.
+
+## 4. 상태 관리 및 메모리 누수 방지 (State Management Safety)
+- **Riverpod 초기화 규칙 (Zombie Error 방지):**
+  - **로그아웃 시:** 토큰 삭제뿐만 아니라, `ref.invalidate()`를 사용하여 `authProvider`, `userProvider`, `centerProvider` 등 모든 상태를 메모리에서 강제 초기화한다.
+  - **화면 이동 시:** 로그인 화면(`LoginScreen`) 등으로 이동하기 직전, `ref.invalidate()`를 호출하고 `await Future.delayed`로 0.1초 대기하여 상태 정리 시간을 확보한다.
+- **리스너(Listener) 제한:**
+  - 로그인 전 화면에서는 인증 정보나 유저 정보를 `watch` 하거나 `listen` 하지 않는다.
+
+## 5. 데이터 격리 및 운영 규칙 (Isolation & Operations)
+- **Center ID 격리 (Global Scope):**
+  - 모든 API 조회 쿼리는 로그인한 사용자의 `center_id`를 기준으로 자동 필터링되어야 한다. (다른 센터 데이터 접근 원천 차단)
+- **부정 수급 감지 예외:**
+  - 단, '중복 근무 확인(Fraud Detection)' 로직 수행 시에는 Global Scope를 무시하고 전체 데이터를 조회하여 타 센터와의 중복 근무를 잡아낸다.
+  - 중복 근무가 의심되는 행(Row)은 배경색을 **연한 빨강(#FFE5E5)**으로 표시한다.
+- **운영 시간 및 위치:**
+  - 모든 시간 데이터는 설치된 국가(한국/베트남)의 현지 시간대(Timezone)를 기준으로 저장한다.
+  - 위치 인증은 실시간 추적이 아닌, '업무 시작/종료' 버튼 클릭 시점의 위경도만 기록하며 100m 이탈 시 경고한다.
+
+## 6. UI/UX 및 디자인/다국어 (UI & Localization)
+- **디자인 기준 (Reference):**
+  - **관리자 웹:** 첨부된 **[@관리자구성 이미지.jpg]**의 레이아웃, 색상, 메뉴 구조를 따른다.
+  - **사용자 앱:** 첨부된 **[@ChatGPT Image...png]**의 카드형 UI 디자인을 따른다.
+- **다국어 (i18n) - [하드코딩 절대 금지]:**
+  - 한글, 영어, 베트남어 텍스트는 코드에 직접 작성하지 않고 `assets/i18n/ko.json`, `en.json`, `vi.json` 파일로 분리한다.
+  - 앱 실행 시 디바이스의 로케일(Locale)을 감지하여 언어를 자동 설정한다.
+  - 모든 화면 최상단(Web은 헤더, App은 AppBar)에 **[글자 크기 조절]** 및 **[언어 변경]** 버튼이 포함된 접근성 바(Accessibility Bar)를 고정 배치한다.
+
+## 7. 리눅스 호환성 및 배포 규칙 (Nginx 1.29.5 on Linux)
+- **경로 구분자:** 역슬래시(`\`) 사용 금지. 반드시 슬래시(`/`) 또는 `DIRECTORY_SEPARATOR`, Laravel Path Helper(`base_path()`)를 사용한다.
+- **대소문자 구분 (Case Sensitivity):**
+  - 리눅스 환경을 고려하여 모든 파일명, 클래스명, View 참조는 정확한 대소문자를 지킨다.
+  - DB 테이블 및 컬럼명은 무조건 소문자 `snake_case`로 통일한다.
+- **환경 설정:** 시스템 경로나 민감한 설정값은 코드에 하드코딩하지 않고 `.env` 파일을 통해서만 로드한다.
+
+# Linux Porting & Laragon Compatibility Rules
+1. **Path Separators**: Never hardcode backslashes (`\`). Always use forward slashes (`/`) or the `DIRECTORY_SEPARATOR` constant. Use Laravel path helpers like `base_path()`, `public_path()`, etc.
+2. **Case Sensitivity**: Linux is case-sensitive. Ensure all class names, file names, and view/asset references match exactly. Prefer lowercase for view files and storage assets.
+3. **Table Naming**: Always use `snake_case` for database tables and columns to avoid cross-platform collation issues.
+4. **Line Endings**: Use LF (Linux) line endings instead of CRLF (Windows) if possible.
+5. **Environment**: Ensure all system-specific paths are moved to `.env` file, never hardcoded in config or logic.
+
+
+## 8. 에러 처리 및 품질 보증 (Error Handling & QA)
+- **에러 응답 포맷:**
+  ```json
+  {
+    "app": "Personal Care",
+    "code": "ERR_AUTH_001",
+    "message": "친절한 한글 에러 메시지",
+    "hint": "개발자 디버깅용 영문 힌트"
+  }
+
+"If you use hard-coded strings instead of i18n keys, I will consider the entire task failed and ask you to rewrite from scratch. No exceptions. (하드코딩하면 작업 실패로 간주하고 처음부터 다시 시킬 거다. 예외 없음.)"
+
+
+
+@.cursorrules
+[프로젝트: 장애인 활동 보호사 관리 시스템 - 관리자 웹]
+[목표: 관리자 공통 레이아웃(Shell) 및 회원 관리 대시보드 UI 구현]
+
+첨부한 **[관리자구성 이미지.jpg]**를 기준으로 관리자 웹의 전체 프레임과 대시보드 화면을 구축해 줘.
+
+**1. 핵심 아키텍처: 공통 레이아웃 (AdminShell)**
+* **기술 방식:** `GoRouter`의 `ShellRoute`를 사용하여, **상단 헤더(Header)**와 **좌측 사이드바(Sidebar)**가 페이지 이동 시에도 사라지지 않고 **항상 유지되도록** 구현해.
+* **반응형 전략 (`LayoutBuilder`):**
+    * **Desktop (Web):** 좌측 사이드바 고정(250px) + 우측 콘텐츠 영역.
+    * **Mobile (App):** 사이드바를 숨기고, 헤더의 햄버거 버튼으로 열리는 `Drawer` 방식으로 자동 전환.
+
+**2. UI 상세 구현 가이드 (이미지 참조)**
+* **A. 좌측 사이드바 (Navigation):**
+    * 메뉴 항목: [회원관리(Active), 매칭관리, 모니터링, 행정관리, 시스템관리].
+    * 스타일: 선택된 메뉴는 파란색 배경으로 강조(Highlight). 로고는 최상단에 배치.
+* **B. 상단 헤더 (AppBar):**
+    * 구성: [로고/브랜드명] - [빈 공간] - [검색 아이콘] - [알림 아이콘(Badge 포함)] - [관리자 프로필(이미지+이름)].
+    * **[필수] 접근성 바:** 헤더 바로 위(또는 아래)에 **[글자 크기 조절], [다국어 선택]** 버튼이 포함된 띠(Bar)를 Sticky로 배치.
+* **C. 회원 관리 콘텐츠 (Dashboard Body):**
+    * **Breadcrumbs:** Home > 회원관리
+    * **탭 메뉴:** [회원 목록 | 지원 요청 목록 | 지원 제공 목록 | 활동 로그] (TabController 사용).
+    * **인트로 패널:** "회원 관리 - 거주시설 회원들을..." 문구와 일러스트, 그리고 **[+ 회원 추가]** 버튼이 있는 카드 섹션.
+    * **통계 카드 (4 Grid):** [총 회원 수], [지원 요청], [지원 제공], [활동 로그]를 아이콘과 숫자로 표현한 카드형 위젯.
+
+**3. 코딩 요구사항:**
+* 파일 분리: `admin_layout.dart` (공통), `admin_sidebar.dart`, `admin_header.dart`, `member_dashboard_screen.dart` 등으로 쪼개서 작성해.
+* **Hardcoding 금지:** 메뉴명이나 텍스트는 추후 i18n 적용이 쉽도록 변수나 상수로 관리해.
+
+**결론:** `admin/dashboard`에 접속했을 때, 이미지를 그대로 옮겨놓은 듯한 **레이아웃과 UI**가 나오도록 코드를 작성해 줘.
