@@ -28,3 +28,10 @@ Homestead.json
 .env.production
 .phpactor.json
 auth.json
+
+
+# --- My Custom Ignore Rules ---
+.env
+/vendor
+.idea/
+*.log
