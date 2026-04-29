@@ -1,5 +1,5 @@
 # 📑 [Project Master Guide] 장애인 활동 지원 플랫폼: PERSONAL CARE
-
+## **AI:** 커서 AI(바이브 코딩)
 ## 🛠️ 개발 환경 (Environment)
 * **라라곤:** v8.5.0 (260125)
 * **PHP:** php-8.5.1-Win32-vs17-x64
@@ -9,8 +9,6 @@
 * **Flutter:** flutter_windows_3.38.9-stable
 * **IDE:** 안드로이드 스튜디오 / 커서 AI
 * **Tool:** Git 설치 / Flutter SDK / Composer
-* ## **AI:** 커서 AI(바이브 코딩)
-
 ---
 
 ## 1. 시스템 기초 및 개발 환경 (Technology Stack)
