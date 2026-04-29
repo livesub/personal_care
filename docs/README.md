@@ -1,5 +1,5 @@
 # 📑 [Project Master Guide] 장애인 활동 지원 플랫폼: PERSONAL CARE
-## **AI:** 커서 AI(바이브 코딩)
+## **AI:** Cursor AI(바이브 코딩)
 ## 🛠️ 개발 환경 (Environment)
 * **라라곤:** v8.5.0 (260125)
 * **PHP:** php-8.5.1-Win32-vs17-x64
