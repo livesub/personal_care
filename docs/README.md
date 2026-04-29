@@ -9,7 +9,7 @@
 * **Flutter:** flutter_windows_3.38.9-stable
 * **IDE:** 안드로이드 스튜디오 / 커서 AI
 * **Tool:** Git 설치 / Flutter SDK / Composer
-* **AI:** 커서 AI(바이브 코딩)
+* ## **AI:** 커서 AI(바이브 코딩)
 
 ---
 
